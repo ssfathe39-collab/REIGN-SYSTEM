@@ -1,6 +1,5 @@
-const keepAlive = require('./keep_alive.js');
-keepAlive(); // تشغيل خادم الإبقاء يعمل
-
+const keepAlive = require('./server.js');
+keepAlive();
 const { Client, GatewayIntentBits, PermissionsBitField, EmbedBuilder } = require('discord.js');
 const express = require('express');
 
