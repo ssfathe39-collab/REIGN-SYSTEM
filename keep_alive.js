@@ -6,8 +6,9 @@ app.get('/', (req, res) => {
 });
 
 function keepAlive() {
-  app.listen(3000, () => {
-    console.log('🌐 Web server running on port 3000');
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`🌐 Web server running on port ${port}`);
   });
 }
 
