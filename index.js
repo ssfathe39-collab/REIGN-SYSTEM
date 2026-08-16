@@ -18,15 +18,13 @@ const client = new Client({
 const PREFIX = '!';
 
 // تخزين التحذيرات والتفاعل في الذاكرة
-const warnings = new Map(); // userID -> [{ id, reason }]
-const messageCounts = new Map(); // userID -> count
+const warnings = new Map();
+const messageCounts = new Map();
 
-// دالة لتوليد كود تحذير مكون من 5 أرقام/حروف
 function generateWarnID() {
   return Math.random().toString(36).substring(2, 7).toUpperCase();
 }
 
-// دالة لتحويل صيغ الوقت (1m, 1h, 1d) إلى مللي ثانية
 function parseDuration(str) {
   if (!str) return null;
   const match = str.match(/^(\d+)([smhd])$/);
@@ -42,8 +40,8 @@ function parseDuration(str) {
   }
 }
 
-// دالة للتحقق هل يملك العضو رول مسموح له من قائمة الرولات المحصورة للأمر
 function hasRole(member, roleIds) {
+  if (!member) return false;
   if (member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
   return member.roles.cache.some(role => roleIds.includes(role.id));
 }
@@ -53,7 +51,7 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
+  if (message.author.bot || !message.guild) return;
 
   // تسجيل التفاعل
   const currentCount = messageCounts.get(message.author.id) || 0;
@@ -76,7 +74,7 @@ client.on('messageCreate', async (message) => {
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
 
-  // 🔴 أمر باند: !حظر / !لف / !باند
+  // 🔴 أمر باند
   if (['حظر', 'لف', 'باند'].includes(command)) {
     const allowedRoles = ['1538588305715888230', '1538587308415000606', '1538587305277784084', '1538587298575425536', '1533615308424609893'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -87,18 +85,22 @@ client.on('messageCreate', async (message) => {
     const duration = parseDuration(args[1]);
     const reason = duration ? args.slice(2).join(' ') || 'بدون سبب' : args.slice(1).join(' ') || 'بدون سبب';
 
-    await target.ban({ reason });
-    message.reply(`✅ تم حظر ${target.user.tag} | السبب: ${reason}`);
+    try {
+      await target.ban({ reason });
+      message.reply(`✅ تم حظر ${target.user.tag} | السبب: ${reason}`);
 
-    if (duration) {
-      setTimeout(async () => {
-        await message.guild.members.unban(target.id, 'انتهت مدة الباند المؤقت').catch(() => {});
-      }, duration);
+      if (duration) {
+        setTimeout(async () => {
+          await message.guild.members.unban(target.id, 'انتهت مدة الباند المؤقت').catch(() => {});
+        }, duration);
+      }
+    } catch (err) {
+      message.reply('❌ تعذر تنفيذ الباند، تحقق من ترتيب رتبة البوت أو صلاحياته.');
     }
     return;
   }
 
-  // 🟢 أمر فك الباند: !ارجع / !ازالة_حظر
+  // 🟢 أمر فك الباند
   if (['ارجع', 'ازالة_حظر'].includes(command)) {
     const allowedRoles = ['1538588305715888230', '1538587308415000606', '1538587305277784084', '1538587298575425536', '1533615308424609893'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -108,11 +110,11 @@ client.on('messageCreate', async (message) => {
     
     await message.guild.members.unban(userId).then(() => {
       message.reply(`✅ تم فك الحظر عن ID: ${userId}`);
-    }).catch(() => message.reply('❌ لم يتم العثور على حظر لهذا العضو.'));
+    }).catch(() => message.reply('❌ لم يتم العثور على حظر لهذا العضو أو ID غير صحيح.'));
     return;
   }
 
-  // 👞 أمر طرد: !طرد
+  // 👞 أمر طرد
   if (command === 'طرد') {
     const allowedRoles = ['1538588305715888230', '1538587308415000606', '1538587305277784084', '1538587298575425536', '1533615308424609893'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -121,12 +123,16 @@ client.on('messageCreate', async (message) => {
     if (!target) return message.reply('❌ يرجى تحديد العضو.');
     const reason = args.slice(1).join(' ') || 'بدون سبب';
 
-    await target.kick(reason);
-    message.reply(`✅ تم طرد ${target.user.tag} | السبب: ${reason}`);
+    try {
+      await target.kick(reason);
+      message.reply(`✅ تم طرد ${target.user.tag} | السبب: ${reason}`);
+    } catch (err) {
+      message.reply('❌ فشل الطرد. قد تكون رتبة الشخص أعلى من رتبة البوت.');
+    }
     return;
   }
 
-  // ⏱️ أمر تايم أوت: !اسكات / !تايم / !لاتتكلم
+  // ⏱️ أمر تايم أوت
   if (['اسكات', 'تايم', 'لاتتكلم'].includes(command)) {
     const allowedRoles = ['1538588030338867220', '1538588197095743599', '1533618177358037033', '1533617852484161618', '1533616666011762748', '1538588250246090772', '1533616291754016839', '1533616119296823447', '1533615854132924686', '1538588305715888230', '1538587308415000606', '1538587305277784084', '1538587298575425536', '1533615308424609893'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -136,12 +142,16 @@ client.on('messageCreate', async (message) => {
     if (!target || !duration) return message.reply('❌ الاستخدام الصحيح: !اسكات [العضو] [المدة مثل 10m] [السبب]');
 
     const reason = args.slice(2).join(' ') || 'بدون سبب';
-    await target.timeout(duration, reason);
-    message.reply(`✅ تم تطبيق تايم أوت على ${target.user.tag} لمدة ${args[1]}`);
+    try {
+      await target.timeout(duration, reason);
+      message.reply(`✅ تم تطبيق تايم أوت على ${target.user.tag} لمدة ${args[1]}`);
+    } catch (err) {
+      message.reply('❌ متعذر تطبيق التايم أوت، تأكد من صلاحيات البوت.');
+    }
     return;
   }
 
-  // 🔊 أمر فك تايم أوت: !سولف / !تكلم
+  // 🔊 أمر فك تايم أوت
   if (['سولف', 'تكلم'].includes(command)) {
     const allowedRoles = ['1538588030338867220', '1538588197095743599', '1533618177358037033', '1533617852484161618', '1533616666011762748', '1538588250246090772', '1533616291754016839', '1533616119296823447', '1533615854132924686', '1538588305715888230', '1538587308415000606', '1538587305277784084', '1538587298575425536', '1533615308424609893'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -149,12 +159,16 @@ client.on('messageCreate', async (message) => {
     const target = message.mentions.members.first() || await message.guild.members.fetch(args[0]).catch(() => null);
     if (!target) return message.reply('❌ يرجى تحديد العضو.');
 
-    await target.timeout(null);
-    message.reply(`✅ تم إزالة التايم أوت عن ${target.user.tag}`);
+    try {
+      await target.timeout(null);
+      message.reply(`✅ تم إزالة التايم أوت عن ${target.user.tag}`);
+    } catch (err) {
+      message.reply('❌ تعذر إزالة التايم أوت.');
+    }
     return;
   }
 
-  // 📊 أمر معلومات السيرفر: !server
+  // 📊 أمر معلومات السيرفر
   if (command === 'server') {
     const embed = new EmbedBuilder()
       .setColor('#5865F2')
@@ -169,7 +183,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // ➕ أمر إعطاء رول: !رول / !رتبة
+  // ➕ أمر إعطاء رول
   if (['رول', 'رتبة'].includes(command)) {
     const allowedRoles = ['1533615308424609893', '1533614768479535205', '1534403557820993536', '1533588099660124272', '1533588257429000292', '1527008751360413707'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -178,12 +192,16 @@ client.on('messageCreate', async (message) => {
     const role = message.mentions.roles.first() || message.guild.roles.cache.get(args[1]);
     if (!target || !role) return message.reply('❌ الاستخدام: !رول [العضو] [الرول]');
 
-    await target.roles.add(role);
-    message.reply(`✅ تم منح رول ${role.name} للمستخدم ${target.user.tag}`);
+    try {
+      await target.roles.add(role);
+      message.reply(`✅ تم منح رول ${role.name} للمستخدم ${target.user.tag}`);
+    } catch (err) {
+      message.reply('❌ فشل إضافة الرول. تأكد أن رتبة البوت أعلى من الرتبة المراد منحها.');
+    }
     return;
   }
 
-  // ➖ أمر إزالة رول: !سحب_رول / !سحب
+  // ➖ أمر إزالة رول
   if (['سحب_رول', 'سحب'].includes(command)) {
     const allowedRoles = ['1533615308424609893', '1533614768479535205', '1534403557820993536', '1533588099660124272', '1533588257429000292', '1527008751360413707'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -192,53 +210,46 @@ client.on('messageCreate', async (message) => {
     const role = message.mentions.roles.first() || message.guild.roles.cache.get(args[1]);
     if (!target || !role) return message.reply('❌ الاستخدام: !سحب [العضو] [الرول]');
 
-    await target.roles.remove(role);
-    message.reply(`✅ تم سحب رول ${role.name} من المستخدم ${target.user.tag}`);
+    try {
+      await target.roles.remove(role);
+      message.reply(`✅ تم سحب رول ${role.name} من المستخدم ${target.user.tag}`);
+    } catch (err) {
+      message.reply('❌ فشل سحب الرول.');
+    }
     return;
   }
 
-  // ⏳ أمر رول مؤقت: !رول_مؤقت
-  if (command === 'رول_مؤقت') {
-    const allowedRoles = ['1533615308424609893', '1533614768479535205', '1534403557820993536', '1533588099660124272', '1533588257429000292', '1527008751360413707', '1538587298575425536'];
-    if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
-
-    const target = message.mentions.members.first() || await message.guild.members.fetch(args[0]).catch(() => null);
-    const role = message.mentions.roles.first() || message.guild.roles.cache.get(args[1]);
-    const duration = parseDuration(args[2]);
-    if (!target || !role || !duration) return message.reply('❌ الاستخدام: !رول_مؤقت [العضو] [الرول] [المدة مثل 1h]');
-
-    await target.roles.add(role);
-    message.reply(`✅ تم منح رول ${role.name} مؤقتاً لمدة ${args[2]}`);
-
-    setTimeout(async () => {
-      await target.roles.remove(role).catch(() => {});
-    }, duration);
-    return;
-  }
-
-  // 🔓 أمر فتح روم: !فتح / !ف
+  // 🔓 أمر فتح روم
   if (['فتح', 'ف'].includes(command)) {
     const allowedRoles = ['1533614768479535205', '1534403557820993536', '1533588099660124272', '1533588257429000292', '1527008751360413707'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
 
     const channel = message.mentions.channels.first() || message.channel;
-    await channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: true });
-    message.reply(`🔓 تم فتح الروم ${channel}`);
+    try {
+      await channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: true });
+      message.reply(`🔓 تم فتح الروم ${channel}`);
+    } catch (err) {
+      message.reply('❌ فشل فتح الروم.');
+    }
     return;
   }
 
-  // 🔒 أمر إغلاق روم: !قفل / !ق
+  // 🔒 أمر إغلاق روم
   if (['قفل', 'ق'].includes(command)) {
     const allowedRoles = ['1533614768479535205', '1534403557820993536', '1533588099660124272', '1533588257429000292', '1527008751360413707'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
 
     const channel = message.mentions.channels.first() || message.channel;
-    await channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
-    message.reply(`🔒 تم قفل الروم ${channel}`);
+    try {
+      await channel.permissionOverwrites.edit(message.guild.roles.everyone, { SendMessages: false });
+      message.reply(`🔒 تم قفل الروم ${channel}`);
+    } catch (err) {
+      message.reply('❌ فشل قفل الروم.');
+    }
     return;
   }
 
-  // ⚠️ أمر تحذير: !تحذير
+  // ⚠️ أمر تحذير
   if (command === 'تحذير') {
     const allowedRoles = ['1538588030338867220', '1538588197095743599', '1533618177358037033', '1533617852484161618', '1533616666011762748', '1538588250246090772', '1533616291754016839', '1533616119296823447', '1533615854132924686', '1538588305715888230', '1538587308415000606', '1538587305277784084', '1538587298575425536', '1533615308424609893'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -265,78 +276,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  // 🗑️ أمر إزالة تحذير: !اعفاء / !شيل
-  if (['اعفاء', 'شيل'].includes(command)) {
-    const allowedRoles = ['1538588030338867220', '1538588197095743599', '1533618177358037033', '1533617852484161618', '1533616666011762748', '1538588250246090772', '1533616291754016839', '1533616119296823447', '1533615854132924686', '1538588305715888230', '1538587308415000606', '1538587298575425536', '1533615308424609893'];
-    if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
-
-    const target = message.mentions.members.first() || await message.guild.members.fetch(args[0]).catch(() => null);
-    const warnID = args[1];
-    if (!target || !warnID) return message.reply('❌ الاستخدام: !شيل [العضو] [كود التحذير]');
-
-    let userWarns = warnings.get(target.id) || [];
-    const initialLen = userWarns.length;
-    userWarns = userWarns.filter(w => w.id !== warnID);
-    warnings.set(target.id, userWarns);
-
-    if (userWarns.length < initialLen) {
-      message.reply(`✅ تم إزالة التحذير ذات الكود \`${warnID}\` من ${target.user.tag}`);
-    } else {
-      message.reply('❌ لم يتم العثور على هذا الكود بهذا العضو.');
-    }
-    return;
-  }
-
-  // 📜 أمر قائمة التحذيرات: !تحذيرات
-  if (command === 'تحذيرات') {
-    const target = message.mentions.members.first() || await message.guild.members.fetch(args[0]).catch(() => null);
-
-    if (target) {
-      const userWarns = warnings.get(target.id) || [];
-      if (userWarns.length === 0) return message.reply('✅ لا يوجد تحذيرات لهذا العضو.');
-
-      const embed = new EmbedBuilder()
-        .setColor('#FF9900')
-        .setTitle(`قائمة تحذيرات ${target.user.tag}`)
-        .setDescription(userWarns.map(w => `🔹 الكود: \`${w.id}\` | السبب: ${w.reason}`).join('\n'));
-
-      return message.reply({ embeds: [embed] });
-    }
-
-    if (args[0] === 'all') {
-      if (warnings.size === 0) return message.reply('✅ لا يوجد أي تحذيرات مسجلة بالسيرفر.');
-      let desc = '';
-      warnings.forEach((warns, uid) => {
-        if (warns.length > 0) {
-          desc += `<@${uid}>: ${warns.length} تحذير/ات\n`;
-        }
-      });
-      const embed = new EmbedBuilder().setColor('#FF9900').setTitle('📊 تحذيرات السيرفر').setDescription(desc);
-      return message.reply({ embeds: [embed] });
-    }
-
-    message.reply('❌ الاستخدام: !تحذيرات [mention/ID] أو !تحذيرات all');
-    return;
-  }
-
-  // 🏆 أمر لوحة الصدارة: !top / !توب
-  if (['top', 'توب'].includes(command)) {
-    const limit = parseInt(args[0]) || 10;
-    const sorted = [...messageCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
-
-    if (sorted.length === 0) return message.reply('لا توجد بيانات تفاعل بعد.');
-
-    const leaderboard = sorted.map((entry, idx) => `**#${idx + 1}** <@${entry[0]}> - ${entry[1]} رسالة`).join('\n');
-    const embed = new EmbedBuilder()
-      .setColor('#FFD700')
-      .setTitle(`🏆 أفضل ${limit} متفاعلين`)
-      .setDescription(leaderboard);
-
-    message.reply({ embeds: [embed] });
-    return;
-  }
-
-  // ✏️ أمر الاسم المستعار: !لقب / !اسم
+  // ✏️ أمر تغيير الاسم
   if (['لقب', 'اسم'].includes(command)) {
     const allowedRoles = ['1533620080116502650', '1533619125035733062', '1538588030338867220', '1538588197095743599', '1533618177358037033', '1533617852484161618', '1533616666011762748', '1538588250246090772', '1533616291754016839', '1533616119296823447', '1533615854132924686', '1538588305715888230', '1538587308415000606', '1538587305277784084', '1538587298575425536', '1533615308424609893'];
     if (!hasRole(message.member, allowedRoles)) return message.reply('❌ لا تملك الرول المصرح له لاستخدام هذا الأمر.');
@@ -345,8 +285,12 @@ client.on('messageCreate', async (message) => {
     const nick = args.slice(1).join(' ');
     if (!target || !nick) return message.reply('❌ الاستخدام: !اسم [العضو] [الاسم الجديد]');
 
-    await target.setNickname(nick);
-    message.reply(`✅ تم تغيير اسم ${target.user.tag} إلى **${nick}**`);
+    try {
+      await target.setNickname(nick);
+      message.reply(`✅ تم تغيير اسم ${target.user.tag} إلى **${nick}**`);
+    } catch (err) {
+      message.reply('❌ فشل تغيير الاسم.');
+    }
     return;
   }
 });
